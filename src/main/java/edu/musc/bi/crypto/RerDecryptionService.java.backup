@@ -1,0 +1,1400 @@
+package edu.musc.bi.crypto;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
+
+import edu.musc.bi.aesclient.aesClientResource;
+import edu.musc.bi.restclient.biApiResp;
+import edu.musc.bi.restclient.fhirclientResource;
+import edu.musc.bi.restclient.modelPatReq;
+import edu.musc.bi.restclient.nameFromEpic;
+import edu.musc.bi.utils.dingzitime;
+
+import io.smallrye.mutiny.Uni;
+
+import org.apache.commons.lang3.StringUtils;
+import org.jboss.logging.Logger;
+
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Pattern;
+
+import javax.crypto.BadPaddingException;
+import javax.crypto.IllegalBlockSizeException;
+import javax.enterprise.context.ApplicationScoped;
+import javax.validation.Valid;
+import javax.ws.rs.DefaultValue;
+import javax.ws.rs.QueryParam;
+import javax.ws.rs.core.Response;
+
+@ApplicationScoped
+public class RerDecryptionService {
+
+    private static final Logger LOGGER = Logger.getLogger(RerDecryptionService.class);
+    private static dingzitime dtime = new dingzitime();
+
+    // protected static final AtomicReference<String> rstMsgShared = new AtomicReference<>();
+    protected static final AtomicBoolean flag = new AtomicBoolean(false);
+
+    private static final ObjectMapper mapper = new JsonMapper();
+    protected fhirclientResource fcRes;
+    protected aesClientResource aesRes;
+
+    public RerDecryptionService() {
+        fcRes = new fhirclientResource();
+        aesRes = new aesClientResource();
+    }
+
+    /*
+     *
+        call rest client
+     *
+    */
+    private final biApiResp tobiApiResp(String s) {
+        try {
+            // System.out.println("\n\n\ntobiApiResp input: " + s);
+            return mapper.readValue(s, biApiResp.class);
+        } catch (JsonProcessingException e) {
+            // throw new RuntimeException(e);
+            LOGGER.errorf(
+                    e,
+                    "Rest Client Chain:: tobiApiResp -- the response has an issue!! body: %s",
+                    s);
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    /*
+     *
+        call rest client
+     *
+    */
+    protected final biApiResp GetStudyStatusByMRN(
+            final boolean env_prod, final String mrn, final String uuid) {
+        Uni<biApiResp> resp = null;
+        biApiResp oresp = null;
+        try {
+            final String env = env_prod ? "prod" : "test";
+            // final modelPatReq patreq = new modelPatReq();
+            // patreq.setMrn(mrn);
+            // patreq.setDob("1900-01-01");
+            // resp = fcRes.GetStudyStatusByMRN(env, patreq);
+            LOGGER.errorf(
+                    "TransactionID: %s "
+                            + "| TransactionEnv: %s |"
+                            + " TransactionJob: %s | TransactionType: %s |"
+                            + " TransactionStatus: %s | %s",
+                    resp.toString(),
+                    env,
+                    "Decrypt/GetStudyStatusByMRN",
+                    "QUERY",
+                    "Captured/Authorized/Success",
+                    resp);
+        } catch (Exception e) {
+            LOGGER.errorf(e, "Rest Client Chain - GetStudyStatusByMRN has an issue!! MRN: %s", mrn);
+            e.printStackTrace();
+        }
+        return oresp;
+    }
+
+    /*
+    //
+    // call rest client
+    //
+    */
+    protected final String setRespDecryptStudy(
+            final String env,
+            final String mrn,
+            final String uuid,
+            final String agegroup,
+            final String encryptedText,
+            final biApiResp barStudy,
+            modelDecryptResp dr) {
+        String message = "success";
+        String errMsg = "failed";
+        try {
+            if (barStudy == null || !StringUtils.equalsIgnoreCase(barStudy.getType(), "FOUND")) {
+                errMsg =
+                        String.format(
+                                "{\"TransactionID\":"
+                                        + " \"%s\",\"TransactionTS\":"
+                                        + " \"%s\",\"TransactionEnv\":"
+                                        + " \"%s\", \"TransactionJob\":"
+                                        + " \"%s\",\"TransactionType\":"
+                                        + " \"%s\","
+                                        + " \"TransactionStatus\":"
+                                        + " \"%s\","
+                                        + " \"TransactionContext\":"
+                                        + " \"%s\"}",
+                                uuid,
+                                LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
+                                env,
+                                "Decrypt/EpicToken/FetchStudy/Processing/setRespDecryptStudy/Resp/NULL",
+                                "QUERY",
+                                "Captured/Authorized/Failed",
+                                encryptedText);
+                LOGGER.error(errMsg);
+                message =
+                        String.format(
+                                "ERROR:: FATAL :: time: %s ENV: %s -- Failed or unable to fetch the"
+                                        + " patient's Study for an Epic token:: %s",
+                                LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
+                                env,
+                                encryptedText);
+                dr.setCollect_type("home");
+            } else { // response is not null and the message body is not empty
+                final String RespBody = barStudy.getMessage();
+                final String type = barStudy.getType();
+                if (type.equalsIgnoreCase("FOUND")) {
+                    dr.setCollect_type("clinic");
+                } else {
+                    dr.setCollect_type("home");
+                }
+            }
+        } catch (Exception e) {
+            message =
+                    String.format(
+                            "ERROR:: FATAL :: time: %s ENV: %s -- Failed or unable to fetch the"
+                                    + " patient's Study for an Epic token:: %s, ErrMsg:: %s",
+                            LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
+                            env,
+                            encryptedText,
+                            e);
+
+            dr.setMsg(message);
+            LOGGER.errorf(e, "Rest Client Chain has an issue!! GetNameByMRN: %s", mrn);
+            e.printStackTrace();
+        }
+        dr.setMsg(message);
+        return message;
+    }
+
+    /*
+    //
+    // call rest client
+    //
+    */
+    protected final String setRespDecryptName(
+            final String env,
+            final String mrn,
+            final String uuid,
+            final String agegroup,
+            final String encryptedText,
+            final biApiResp barName,
+            modelDecryptResp dr) {
+        String message = "success";
+        String errMsg = "failed";
+        try {
+            if (barName == null || !StringUtils.equalsIgnoreCase(barName.getType(), "FOUND")) {
+                errMsg =
+                        String.format(
+                                "{\"TransactionID\":"
+                                        + " \"%s\",\"TransactionTS\":"
+                                        + " \"%s\",\"TransactionEnv\":"
+                                        + " \"%s\", \"TransactionJob\":"
+                                        + " \"%s\",\"TransactionType\":"
+                                        + " \"%s\","
+                                        + " \"TransactionStatus\":"
+                                        + " \"%s\","
+                                        + " \"TransactionContext\":"
+                                        + " \"%s\"}",
+                                uuid,
+                                LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
+                                env,
+                                "Decrypt/EpicToken/FetchName/Processing/setRespDecryptName/Resp/NULL",
+                                "QUERY",
+                                "Captured/Authorized/Failed",
+                                encryptedText);
+                LOGGER.error(errMsg);
+                message =
+                        String.format(
+                                "ERROR:: FATAL :: time: %s ENV: %s -- Failed or unable to fetch the"
+                                        + " patient's MRN for an Epic token:: %s",
+                                LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
+                                env,
+                                encryptedText);
+            } else { // response is not null and the message body is not empty
+                final String RespBody = barName.getMessage();
+                final String type = barName.getType();
+                final int code = barName.getCode();
+                nameFromEpic name = toName(RespBody, uuid);
+                if (name == null
+                        || (StringUtils.isBlank(name.getFirst())
+                                && StringUtils.isBlank(name.getLast()))) {
+                    errMsg =
+                            String.format(
+                                    "{\"TransactionID\":"
+                                            + " \"%s\",\"TransactionTS\":"
+                                            + " \"%s\",\"TransactionEnv\":"
+                                            + " \"%s\", \"TransactionJob\":"
+                                            + " \"%s\",\"TransactionType\":"
+                                            + " \"%s\","
+                                            + " \"TransactionStatus\":"
+                                            + " \"%s\","
+                                            + " \"TransactionContext\":"
+                                            + " \"%s\"}",
+                                    uuid,
+                                    LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
+                                    env,
+                                    "Decrypt/EpicToken/FetchName/Processing/setRespDecryptName/Resp/Name/NULL",
+                                    "QUERY",
+                                    "Captured/Authorized/Failed",
+                                    encryptedText);
+                    LOGGER.error(errMsg);
+                    message =
+                            String.format(
+                                    "ERROR:: time: %s ENV: %s -- Failed or unable to fetch the"
+                                            + " patient's name based on this Epic token:: %s",
+                                    LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
+                                    env,
+                                    encryptedText);
+                } else { // name is not null and the patient has last and first name
+                    final String first = name.getFirst();
+                    final String last = name.getLast();
+                    final String dob = name.getDob();
+                    final String decryptedString = "mrn=" + mrn;
+                    dr.setMrn(mrn);
+                    dr.setDecrypted(decryptedString);
+                    dr.setFirst(first);
+                    dr.setLast(last);
+                    if (!StringUtils.isBlank(dob)
+                            && !StringUtils.equalsIgnoreCase(agegroup.trim(), "all")) {
+                        final int age = dtime.calculateAge(dob);
+                        if (age > -1) {
+                            if (StringUtils.equalsIgnoreCase(agegroup.trim(), "adult")) {
+                                if (age < 18) {
+                                    dr.setMrn("");
+                                    dr.setDecrypted("");
+                                    dr.setFirst("");
+                                    dr.setLast("");
+                                    message =
+                                            String.format(
+                                                    "ERROR:"
+                                                            + " Age-group"
+                                                            + " issue:"
+                                                            + " Only"
+                                                            + " individuals"
+                                                            + " 18 and"
+                                                            + " older"
+                                                            + " will"
+                                                            + " be considered"
+                                                            + " enrolled"
+                                                            + " into"
+                                                            + " this"
+                                                            + " study!"
+                                                            + " Note:"
+                                                            + " Your"
+                                                            + " encrypted"
+                                                            + " id: %s;"
+                                                            + " Your"
+                                                            + " age:"
+                                                            + " %s",
+                                                    encryptedText, age);
+                                    LOGGER.warnf(
+                                            "TransactionID: %s"
+                                                    + " | TransactionTS: %s"
+                                                    + " | TransactionEnv:"
+                                                    + " %s |"
+                                                    + " TransactionJob:"
+                                                    + " %s |"
+                                                    + " TransactionType:"
+                                                    + " %s |"
+                                                    + " TransactionStatus:"
+                                                    + " %s TransactionContext:"
+                                                    + " %s",
+                                            uuid,
+                                            LocalDateTime.ofInstant(
+                                                    Instant.now(), ZoneId.systemDefault()),
+                                            env,
+                                            "Decrypt/Agegroup/Child",
+                                            "QUERY",
+                                            "Captured/UnAuthorized/Failed",
+                                            message);
+                                }
+                            } else if (StringUtils.equalsIgnoreCase(agegroup.trim(), "child")) {
+                                if (age >= 18) {
+                                    dr.setMrn("");
+                                    dr.setDecrypted("");
+                                    dr.setFirst("");
+                                    dr.setLast("");
+                                    message =
+                                            String.format(
+                                                    "ERROR:"
+                                                            + " Age-group"
+                                                            + " issue:"
+                                                            + " Only"
+                                                            + " individuals"
+                                                            + " under"
+                                                            + " the age"
+                                                            + " of 18"
+                                                            + " will"
+                                                            + " be considered"
+                                                            + " enrolled"
+                                                            + " into"
+                                                            + " this"
+                                                            + " study!"
+                                                            + " Note:"
+                                                            + " Your"
+                                                            + " encrypted"
+                                                            + " id: %s;"
+                                                            + " Your"
+                                                            + " age:"
+                                                            + " %s",
+                                                    encryptedText, age);
+                                    LOGGER.warnf(
+                                            "TransactionID: %s"
+                                                    + " | TransactionTS: %s"
+                                                    + " | TransactionEnv:"
+                                                    + " %s |"
+                                                    + " TransactionJob:"
+                                                    + " %s |"
+                                                    + " TransactionType:"
+                                                    + " %s |"
+                                                    + " TransactionStatus:"
+                                                    + " %s TransactionContext:"
+                                                    + " %s",
+                                            uuid,
+                                            LocalDateTime.ofInstant(
+                                                    Instant.now(), ZoneId.systemDefault()),
+                                            env,
+                                            "Decrypt/Agegroup/Child",
+                                            "QUERY",
+                                            "Captured/UnAuthorized/Failed",
+                                            message);
+                                } // age >= 18
+                            } // if agegroup is child
+                        } //  if age>-1
+                    } // if (!StringUtils.isBlank(dob)
+                } // if (!StringUtils.isBlank(name.getFirst()))
+
+                // modelDecryptResp respDecrypt =
+                //        new modelDecryptResp(
+                //                message, encryptedText, paramter, mrn, first, last, collect_type);
+                LOGGER.infof(
+                        "TransactionID: %s"
+                                + " | TransactionTS: %s"
+                                + " | TransactionEnv: %s"
+                                + " | TransactionJob: %s"
+                                + " | TransactionType: %s"
+                                + " | TransactionStatus: %s"
+                                + " | TransactionContext: %s",
+                        uuid,
+                        LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
+                        env,
+                        "Decrypt/ReturnMessage/setMRNandName/Final",
+                        "QUERY",
+                        "Captured/Authorized/Success",
+                        encryptedText);
+                // return Uni.createFrom()
+                //        .item(Response.ok(resp).build());
+            } // biApiResp is null
+        } catch (Exception e) {
+            message =
+                    String.format(
+                            "Time: %s ENV: %s -- Failed or unable to fetch the patient's MRN and"
+                                    + " name for an Epic token:: %s, ErrMsg:: %s",
+                            LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
+                            env,
+                            encryptedText,
+                            e);
+
+            dr.setMsg(message);
+            LOGGER.errorf(e, "Rest Client Chain has an issue!! GetNameByMRN: %s", mrn);
+            e.printStackTrace();
+        }
+        dr.setMsg(message);
+        return message;
+    }
+    /*
+    //
+    // call rest client
+    //
+    */
+    protected final Response getRespDecrypt(
+            final modelPatReq patreq, final String name, final String study) {
+
+        String msgName = "success";
+        String msgStudy = "success";
+        String rstErrorMsg = "failed";
+        // String decrypted = "";
+        final String mrn = patreq.getMrn();
+        final String env = patreq.getEnv();
+        final String uuid = patreq.getUuid();
+        final String encryptedText = patreq.getEncrypted();
+        final String agegroup = patreq.getAgegroup();
+
+        Response resp = Response.status(400).entity(rstErrorMsg).build();
+
+        modelDecryptResp dr = new modelDecryptResp();
+        dr.setEncrypted(encryptedText);
+        dr.setIss(patreq.getIss());
+        try {
+            if (!StringUtils.isBlank(name)) {
+                // System.out.println("\n\n\nName Return: " + name);
+                biApiResp barName = tobiApiResp(name);
+                // System.out.println("\n\n\nName Return type: " + barName.getType());
+                // System.out.println("\n\n\nName Return message: " + barName.getMessage());
+                // System.out.println("\n\n\nName Return code: " + barName.getCode());
+                msgName = setRespDecryptName(env, mrn, uuid, agegroup, encryptedText, barName, dr);
+            }
+            if (!StringUtils.isBlank(study)) {
+                // System.out.println("\n\n\nStudy RReturn: " + study);
+                biApiResp barStudy = tobiApiResp(study);
+                // System.out.println("\n\n\nStudy Return type: " + barStudy.getType());
+                // System.out.println("\n\n\nStudy RReturn message: " + barStudy.getMessage());
+                // System.out.println("\n\n\nStudy RReturn code: " + barStudy.getCode());
+                msgStudy =
+                        setRespDecryptStudy(env, mrn, uuid, agegroup, encryptedText, barStudy, dr);
+                // final String strMsgStudy = barStudy.getMessage();
+                // if (!StringUtils.isBlank(strMsgStudy)) {}
+            }
+
+            if (StringUtils.equalsIgnoreCase(msgName, "success")
+                    && StringUtils.equalsIgnoreCase(msgStudy, "success")) {
+                resp = Response.ok(dr).build();
+            } else {
+                final String strErrResp =
+                        String.format(
+                                "ERROR:: FATAL :: TS: %s ENV: %s -- Failed or unable to fetch the"
+                                    + " patient's MRN, name or study info for an Epic token:: %s."
+                                    + " GetName:: %s GetStudyStatus:: %s",
+                                LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
+                                env,
+                                encryptedText,
+                                msgName,
+                                msgStudy);
+                dr.setMsg(strErrResp);
+                resp = Response.status(206).entity(dr).build();
+            }
+
+            LOGGER.infof(
+                    "TransactionID: %s "
+                            + " | TransactionTS: %s"
+                            + " | TransactionEnv: %s | TransactionJob: %s | TransactionType:"
+                            + " %s | TransactionStatus: %s, %s",
+                    uuid,
+                    LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
+                    env,
+                    "Decrypt/getNameByMRN",
+                    "QUERY",
+                    "Captured/Authorized/Success",
+                    resp);
+        } catch (Exception e) {
+            LOGGER.errorf(e, "Rest Client Chain has an issue!! GetNameByMRN: %s", mrn);
+            e.printStackTrace();
+        }
+        return resp;
+    }
+
+    /*
+    //
+    // call rest client
+    //
+    */
+    protected final biApiResp getNameByMRN(
+            final boolean env_prod, final String mrn, final String uuid) {
+        biApiResp resp = null;
+        try {
+            String env = "test";
+            if (env_prod) {
+                env = "prod";
+            }
+            modelPatReq patreq = new modelPatReq();
+            patreq.setMrn(mrn);
+            patreq.setDob("1900-01-01");
+            Uni<String> uni = fcRes.getNameByMRN(env, patreq);
+            uni.onItem()
+                    .ifNotNull()
+                    .transform(result -> result)
+                    .onItem()
+                    .ifNull()
+                    .continueWith("hello!")
+                    .subscribe()
+                    .with(
+                            item -> {
+                                // System.out.println("\n\n\nReturn: " + item);
+                                biApiResp bar = tobiApiResp(item);
+                                // System.out.println("\n\n\nReturn type: " + bar.getType());
+                                // System.out.println("\n\n\nReturn message: " + bar.getMessage());
+                                // System.out.println("\n\n\nReturn code: " + bar.getCode());
+                            },
+                            failure -> System.out.println("Failed with " + failure));
+
+            LOGGER.infof(
+                    "TransactionID: %s "
+                            + " | TransactionTS: %s"
+                            + "| TransactionEnv: %s | TransactionJob: %s | TransactionType:"
+                            + " %s | TransactionStatus: %s, %s",
+                    uuid,
+                    LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
+                    env,
+                    "Decrypt/getNameByMRN",
+                    "QUERY",
+                    "Captured/Authorized/Success",
+                    resp);
+        } catch (Exception e) {
+            LOGGER.errorf(e, "Rest Client Chain has an issue!! GetNameByMRN: %s", mrn);
+            e.printStackTrace();
+        }
+        return resp;
+    }
+
+    /*
+     *
+     */
+    private nameFromEpic toName(final String s, final String uuid) {
+        try {
+            return mapper.readValue(s, nameFromEpic.class);
+        } catch (JsonProcessingException e) {
+            LOGGER.errorf(e, "Rest Client Chain - toName has an issue!! String: %s", s);
+            // throw new RuntimeException(e);
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    /*
+     *
+     */
+    public Uni<Response> encrypt(
+            @DefaultValue("test") @QueryParam("env") String env,
+            @DefaultValue("adult") @QueryParam("agegroup") String agegroup, // all, adult, child
+            @Valid RerDecryption body)
+            throws Exception {
+
+        final String uuid = UUID.randomUUID().toString().replace("-", "");
+        final String encryptedText = body.epicToken;
+        if (encryptedText == null) {
+            return Uni.createFrom().item(Response.status(400).build());
+        }
+
+        Decrypt decrypt = new Decrypt(encryptedText);
+        String message = "success";
+        String rstErrorMsg = "failed";
+        String paramter = "";
+        String decrypted = "";
+        String mrn = "";
+        String first = "";
+        String last = "";
+        String dob = "";
+        String collect_type = "home";
+
+        try {
+            if (encryptedText != null) {
+                return Uni.createFrom().item(Response.ok(encryptedText).build());
+            }
+        } catch (Exception e) {
+            rstErrorMsg =
+                    String.format(
+                            "TransactionID: %s "
+                                    + " | TransactionTS: %s"
+                                    + "| TransactionEnv: %s | TransactionJob: %s |"
+                                    + " TransactionType: %s | TransactionStatus: %s |"
+                                    + " TransactionContext: %s",
+                            uuid,
+                            LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
+                            env,
+                            "Decrypt/Processing/Exception",
+                            "QUERY",
+                            "Captured/Authorized/Failed",
+                            encryptedText);
+            LOGGER.errorf(e, rstErrorMsg);
+            // e.printStackTrace(System.out);
+            // throw new RuntimeException(e.getCause());
+        }
+        return Uni.createFrom().item(Response.status(400).entity(rstErrorMsg).build());
+    }
+
+    /*
+     *
+     */
+    private final String decrypt_Vendor(
+            final String uuid,
+            final String env,
+            final String agegroup, // all, adult, child
+            final String encryptedText)
+            throws Exception {
+        String rstErrorMsg = "failed";
+        String paramter = "";
+        String mrn = "";
+        try {
+            // System.out.println(encryptedText);
+            LOGGER.debug("this message is came from Mobile App: " + encryptedText);
+
+            // final aesClientResource aesRes = new aesClientResource();
+            final String id = aesRes.getMessage(encryptedText);
+            mrn = id == null ? "" : id;
+            if (StringUtils.isNotBlank(id) && id.contains("|")) {
+                String[] arrOfMsg = id.split(Pattern.quote("|"));
+                if (arrOfMsg.length > 0) {
+                    mrn = arrOfMsg[0];
+                }
+                paramter = "mrn=" + mrn;
+                LOGGER.infof(
+                        "TransactionID: %s "
+                                + " | TransactionTS: %s"
+                                + " | TransactionEnv: %s | TransactionJob: %s"
+                                + " | TransactionType: %s | TransactionStatus: %s"
+                                + " | TransactionContext: %s",
+                        uuid,
+                        LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
+                        env,
+                        "Decrypt_Vendor/EpicToken/MobileApp/Enroll/aesRes.getMessage",
+                        "QUERY",
+                        "Captured/Authorized/Success",
+                        encryptedText);
+            } else { // if (!StringUtils.isBlank(id)) {
+                mrn = "";
+                paramter = "mrn=" + mrn;
+                rstErrorMsg =
+                        String.format(
+                                "{\"TransactionID\": \"%s\","
+                                        + "\"TransactionTS\": \"%s\","
+                                        + "\"TransactionEnv\": \"%s\","
+                                        + " \"TransactionJob\": \"%s\",\"TransactionType\":"
+                                        + " \"%s\", \"TransactionStatus\": \"%s\","
+                                        + " \"TransactionContext\": \"%s\"}",
+                                uuid,
+                                LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
+                                env,
+                                "Decrypt_Vendor/EpicToken/MobileApp/Enroll/Processing/MRN/NULL",
+                                "QUERY",
+                                "Captured/Authorized/Failed",
+                                id);
+                LOGGER.error(rstErrorMsg);
+                mrn = id;
+            } // if (!StringUtils.isBlank(id)) {
+        } catch (Exception e) {
+            rstErrorMsg =
+                    String.format(
+                            "TransactionID: %s "
+                                    + " | TransactionTS: %s"
+                                    + "| TransactionEnv: %s | TransactionJob: %s |"
+                                    + " TransactionType: %s | TransactionStatus: %s |"
+                                    + " TransactionContext: %s",
+                            uuid,
+                            LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
+                            env,
+                            "Decrypt_Vendor/MobileApp/Enroll/Processing/Exception",
+                            "QUERY",
+                            "Captured/Authorized/Failed",
+                            encryptedText);
+            LOGGER.errorf(e, rstErrorMsg);
+            // e.printStackTrace(System.out);
+            // throw new RuntimeException(e.getCause());
+        }
+        return mrn;
+    }
+    /*
+     *
+     *
+     *
+     *
+     */
+    private final modelDecryptResp getMrnFromEncryptedStr_MobileApp(
+            final String uuid,
+            final String env,
+            final String agegroup, // all, adult, child
+            final String encryptedText,
+            final modelDecryptResp id)
+            throws Exception {
+        String rstErrorMsg = "failed";
+        String paramter = "";
+        String mrn = "";
+        try {
+            if (StringUtils.isNotBlank(id.getMrn())) {
+                // String[] arrOfMsg = id.split(Pattern.quote("|"));
+                // if (arrOfMsg.length > 0) {
+                //    mrn = arrOfMsg[0];
+                // }
+                mrn = id.getMrn();
+                paramter = "mrn=" + mrn;
+                LOGGER.infof(
+                        "TransactionID: %s "
+                                + " | TransactionTS: %s"
+                                + " | TransactionEnv: %s | TransactionJob: %s"
+                                + " | TransactionType: %s | TransactionStatus: %s"
+                                + " | TransactionContext: %s",
+                        uuid,
+                        LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
+                        env,
+                        "Decrypt_Vendor/EpicToken/MobileApp/Enroll/aesRes.getMessage",
+                        "QUERY",
+                        "Captured/Authorized/Success",
+                        encryptedText);
+            } else { // if (!StringUtils.isBlank(id)) {
+                mrn = "";
+                paramter = "mrn=" + mrn;
+
+                rstErrorMsg =
+                        String.format(
+                                "{\"TransactionID\": \"%s\","
+                                        + "\"TransactionTS\": \"%s\","
+                                        + "\"TransactionEnv\": \"%s\","
+                                        + " \"TransactionJob\": \"%s\",\"TransactionType\":"
+                                        + " \"%s\", \"TransactionStatus\": \"%s\","
+                                        + " \"TransactionContext\": \"%s\"}",
+                                uuid,
+                                LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
+                                env,
+                                "Decrypt_Vendor/EpicToken/MobileApp/Enroll/Processing/MRN/NULL",
+                                "QUERY",
+                                "Captured/Authorized/Failed",
+                                id.getMsg());
+                LOGGER.error(rstErrorMsg);
+                mrn = id.getMrn();
+            }
+        } catch (Exception e) {
+            rstErrorMsg =
+                    String.format(
+                            "TransactionID: %s "
+                                    + " | TransactionTS: %s"
+                                    + "| TransactionEnv: %s | TransactionJob: %s |"
+                                    + " TransactionType: %s | TransactionStatus: %s |"
+                                    + " TransactionContext: %s",
+                            uuid,
+                            LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
+                            env,
+                            "Decrypt_Vendor/MobileApp/Enroll/Processing/Exception",
+                            "QUERY",
+                            "Captured/Authorized/Failed",
+                            encryptedText);
+            LOGGER.errorf(e, rstErrorMsg);
+            // e.printStackTrace(System.out);
+            // throw new RuntimeException(e.getCause());
+        }
+        // return Uni.createFrom().item(mrn);
+        return id;
+    }
+    /*
+     *
+     *
+     *
+     *
+     */
+    /*
+     *
+     */
+    private final String decrypt_Epic(
+            final String uuid,
+            final String env,
+            final String agegroup, // all, adult, child
+            final String encryptedText,
+            final Decrypt decrypt)
+            throws Exception {
+        String rstErrorMsg = "failed";
+        String paramter = "";
+        String mrn = "";
+        String decrypted = "";
+        try {
+            // System.out.println(encryptedText);
+            LOGGER.debug("this message is came from Epic: " + encryptedText);
+            decrypted = decrypt.getDecryptedString();
+            paramter = decrypted;
+            mrn = decrypt.getMRN(decrypted);
+            if (StringUtils.isNotBlank(mrn)) {
+                LOGGER.infof(
+                        "TransactionID: %s "
+                                + " | TransactionTS: %s"
+                                + "| TransactionEnv: %s | TransactionJob: %s |"
+                                + " TransactionType: %s | TransactionStatus: %s"
+                                + " TransactionContext: %s",
+                        uuid,
+                        LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
+                        env,
+                        "Decrypt_Epic/MyChart/getDecryptedString",
+                        "QUERY",
+                        "Captured/Authorized/Success",
+                        encryptedText);
+            } else {
+                rstErrorMsg =
+                        String.format(
+                                "{\"TransactionID\": \"%s\","
+                                        + "\"TransactionTS\": \"%s\","
+                                        + "\"TransactionEnv\": \"%s\","
+                                        + " \"TransactionJob\": \"%s\",\"TransactionType\":"
+                                        + " \"%s\", \"TransactionStatus\": \"%s\","
+                                        + " \"TransactionContext\": \"%s\"}",
+                                uuid,
+                                LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
+                                env,
+                                "Decrypt_Epic/EpicToken/MyChart/Processing/MRN/NULL",
+                                "QUERY",
+                                "Captured/Authorized/Failed",
+                                encryptedText);
+            }
+        } catch (Exception e) {
+            rstErrorMsg =
+                    String.format(
+                            "TransactionID: %s "
+                                    + " | TransactionTS: %s"
+                                    + "| TransactionEnv: %s | TransactionJob: %s |"
+                                    + " TransactionType: %s | TransactionStatus: %s |"
+                                    + " TransactionContext: %s",
+                            uuid,
+                            LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
+                            env,
+                            "Decrypt_Epic/EpicToken/MyChart/Processing/Exception",
+                            "QUERY",
+                            "Captured/Authorized/Failed",
+                            encryptedText);
+            LOGGER.errorf(e, rstErrorMsg);
+            // e.printStackTrace(System.out);
+            // throw new RuntimeException(e.getCause());
+        }
+        return mrn;
+    }
+    /*
+     *
+     */
+    private final Uni<modelDecryptResp> decrypt_Epic_Async(
+            final String uuid,
+            final String env,
+            final String agegroup, // all, adult, child
+            final String encryptedText)
+            throws Exception {
+        String rstErrorMsg = "failed";
+        String paramter = "";
+        String mrn = "";
+        String decrypted = "";
+        String message = "";
+        modelDecryptResp respDecrypt = new modelDecryptResp();
+        respDecrypt.setIss(0);
+        try {
+            // System.out.println(encryptedText);
+            LOGGER.debug("this message is came from Epic: " + encryptedText);
+            final Decrypt decryptMyChart = new Decrypt(encryptedText);
+            decrypted = decryptMyChart.getDecryptedString();
+            paramter = decrypted;
+            mrn = decryptMyChart.getMRN(decrypted);
+            if (StringUtils.isNotBlank(mrn)) {
+                respDecrypt.setMrn(mrn);
+                LOGGER.infof(
+                        "TransactionID: %s "
+                                + " | TransactionTS: %s"
+                                + "| TransactionEnv: %s | TransactionJob: %s |"
+                                + " TransactionType: %s | TransactionStatus: %s"
+                                + " TransactionContext: %s",
+                        uuid,
+                        LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
+                        env,
+                        "Decrypt_Epic/MyChart/getDecryptedString",
+                        "QUERY",
+                        "Captured/Authorized/Success",
+                        encryptedText);
+            } else {
+                message =
+                        String.format(
+                                "ERROR:: FATAL :: time: %s ENV: %s -- Failed or unable to fetch the"
+                                        + " patient's MRN for an Epic/MyChart token:: %s",
+                                LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
+                                env,
+                                encryptedText);
+
+                rstErrorMsg =
+                        String.format(
+                                "{\"TransactionID\": \"%s\","
+                                        + "\"TransactionTS\": \"%s\","
+                                        + "\"TransactionEnv\": \"%s\","
+                                        + " \"TransactionJob\": \"%s\",\"TransactionType\":"
+                                        + " \"%s\", \"TransactionStatus\": \"%s\","
+                                        + " \"TransactionContext\": \"%s\"}",
+                                uuid,
+                                LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
+                                env,
+                                "Decrypt_Epic/EpicToken/MyChart/Processing/MRN/NULL",
+                                "QUERY",
+                                "Captured/Authorized/Failed",
+                                message);
+                LOGGER.error(rstErrorMsg);
+            }
+        } catch (Exception e) {
+            message =
+                    String.format(
+                            "ERROR:: FATAL WITH Exception :: time: %s ENV: %s -- Failed or unable"
+                                    + " to fetch the patient's MRN for an Epic/MyChart token:: %s."
+                                    + " Exception: %s",
+                            LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
+                            env,
+                            encryptedText,
+                            e);
+            rstErrorMsg =
+                    String.format(
+                            "TransactionID: %s "
+                                    + " | TransactionTS: %s"
+                                    + "| TransactionEnv: %s | TransactionJob: %s |"
+                                    + " TransactionType: %s | TransactionStatus: %s |"
+                                    + " TransactionContext: %s",
+                            uuid,
+                            LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
+                            env,
+                            "Decrypt_Epic_Async/EpicToken/MyChart/Processing/Exception",
+                            "QUERY",
+                            "Captured/Authorized/Failed",
+                            encryptedText);
+            LOGGER.errorf(e, rstErrorMsg);
+            respDecrypt.setMsg(message);
+            // e.printStackTrace(System.out);
+            // throw new RuntimeException(e.getCause());
+        }
+        return Uni.createFrom().item(respDecrypt);
+    }
+    /*
+     *
+     */
+    private Uni<modelDecryptResp> decryptTokenChain_Async(
+            final String uuid,
+            final String env,
+            final String agegroup, // all, adult, child
+            final String encryptedText)
+            throws Exception {
+        return decrypt_Epic_Async(uuid, env, agegroup, encryptedText)
+                .flatMap(
+                        resultEpicToken -> {
+                            if (StringUtils.isBlank(resultEpicToken.getMrn())) {
+                                return aesRes.getMrnEpicTokenMobileApp(encryptedText);
+                            } else {
+                                return Uni.createFrom().item(resultEpicToken);
+                            }
+                        });
+    }
+    /*
+     *
+     */
+    private final modelPatReq setPatReq(
+            final String uuid,
+            final String env,
+            final String agegroup,
+            final String encryptedText,
+            final modelDecryptResp mrn) {
+        modelPatReq patreq = new modelPatReq();
+        if (mrn != null && StringUtils.isNotBlank(mrn.getMrn())) {
+            patreq.setMrn(mrn.getMrn());
+            patreq.setIss(mrn.getIss());
+        } else if (mrn != null && StringUtils.isBlank(mrn.getMrn())) {
+            patreq.setMsg(mrn.getMsg());
+            patreq.setIss(mrn.getIss());
+        }
+        patreq.setDob("1900-01-01");
+        patreq.setAgegroup(agegroup);
+        patreq.setEnv(env);
+        patreq.setUuid(uuid);
+        patreq.setEncrypted(encryptedText);
+        // Combine the result of our 2 Unis in a tuple
+        // return Uni.createFrom().item(patreq);
+        return patreq;
+    }
+
+    /*
+     *
+     */
+    public Uni<Response> decrypt(
+            @DefaultValue("test") @QueryParam("env") String env,
+            @DefaultValue("adult") @QueryParam("agegroup") String agegroup, // all, adult, child
+            @Valid RerDecryption body)
+            throws Exception {
+
+        final String uuid = UUID.randomUUID().toString().replace("-", "");
+        final String encryptedText = body.epicToken;
+        if (encryptedText == null) {
+            return Uni.createFrom().item(Response.status(400).build());
+        }
+
+        String message = "success";
+        String rstErrorMsg = "failed";
+        // String decrypted = "";
+        String mrn = "";
+
+        modelDecryptResp respDecrypt = new modelDecryptResp();
+        respDecrypt.setEncrypted(encryptedText);
+
+        try {
+            if (encryptedText == null) {
+                rstErrorMsg =
+                        String.format(
+                                "TransactionID: %s "
+                                        + " | TransactionTS: %s"
+                                        + "| TransactionEnv: %s | TransactionJob: %s |"
+                                        + " TransactionType: %s | TransactionStatus: %s |"
+                                        + " TransactionContext: %s",
+                                uuid,
+                                LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
+                                env,
+                                "Decrypt/Processing/Exception",
+                                "QUERY",
+                                "Captured/Authorized/Failed/encrypted String is null",
+                                encryptedText);
+                LOGGER.error(rstErrorMsg);
+            } else { // encryptedText != null
+                var result = new AtomicReference<>();
+                try {
+                    /*
+                       Try it with your specified algorithm, block size, IV size, and see what size output you get :-)
+                       First it depends on the encoding of the input text. Is it UTF8? UTF16? Lets assume UTF8 so 1 Byte per character means 50 Bytes of input data to your encryption algorithm. (100 Bytes if UTF16)
+                       Then you will pad to the Block Size for the algorithm. AES, regardless of key size is a block of 16 Bytes. So we will be padded out to 64 Bytes (Or 112 for UTF 16)
+                       Then we need to store the IV and header information. So that is (usually, with default settings/IV sizes) another 16Bytes so we are at 80 Bytes (Or 128 for UTF16)
+                       Finally we are encoding to Base64. I assume you want string length, since otherwise it is wasteful to make it into a string. So Base 64 bloats the string using the following formula: Ceil(bytes/3) * 4. So for us that is Ceil(80/3) = 27 * 4 = 108 characters (Or 172 for UTF 16)
+                       Again this is all highly dependent on your choices of how you encrypt, what the text is encoded as, etc.
+                       I would try it with your scenario before relying on these numbers for anything useful.
+                    *
+                    */
+                    // From the mobile App
+                    return decryptTokenChain_Async(uuid, env, agegroup, encryptedText)
+                            .flatMap(
+                                    respDecrMRN -> {
+                                        if (respDecrMRN != null
+                                                && StringUtils.isNotBlank(respDecrMRN.getMrn())) {
+                                            modelPatReq patreq =
+                                                    setPatReq(
+                                                            uuid,
+                                                            env,
+                                                            agegroup,
+                                                            encryptedText,
+                                                            respDecrMRN);
+                                            return Uni.combine()
+                                                    .all()
+                                                    .unis(
+                                                            Uni.createFrom().item(patreq),
+                                                            fcRes.getNameByMRN(env, patreq),
+                                                            fcRes.GetStudyStatusByMRN(env, patreq))
+                                                    .combinedWith(
+                                                            (s1, s2, s3) ->
+                                                                    getRespDecrypt(s1, s2, s3));
+
+                                        } else {
+                                            return Uni.createFrom()
+                                                    .item(
+                                                            Response.status(400)
+                                                                    .entity(respDecrMRN)
+                                                                    .build());
+                                        }
+                                    });
+                    /*
+                            .onItem()
+                            .ifNotNull()
+                            .transform(item -> item)
+                            .chain(
+                                    patreq -> {
+                                        if (patreq != null
+                                                && StringUtils.isNotBlank(patreq.getMrn())) {
+                                            return Uni.combine()
+                                                    .all()
+                                                    .unis(
+                                                            Uni.createFrom().item(patreq),
+                                                            fcRes.getNameByMRN(env, patreq),
+                                                            fcRes.GetStudyStatusByMRN(env, patreq))
+                                                    .combinedWith(
+                                                            (s1, s2, s3) ->
+                                                                    getRespDecrypt(s1, s2, s3));
+                                        } else {
+                                            return "";
+                                        }
+                                    });
+                    */
+                    // .chain(respEpicToken -> Uni.createFrom().item(respEpicToken));
+                    /*
+                    decryptTokenChain(uuid, env, agegroup, encryptedText)
+                            .onItem()
+                            .ifNotNull()
+                            .transform(item -> setPatReq(uuid, env, agegroup, encryptedText, item))
+                            .chain(
+                                    result1Enroll ->
+                                            fcRes.getNameByMRN(env, result1Enroll)
+                                                    .subscribe()
+                                                    .with(
+                                                            result2Name ->
+                                                                    fcRes.GetStudyStatusByMRN(
+                                                                                    env,
+                                                                                    result1Enroll)
+                                                                            .subscribe()
+                                                                            .with(
+                                                                                    result3Study -> {
+                                                                                        result.set(
+                                                                                                getRespDecrypt(
+                                                                                                        result1Enroll,
+                                                                                                        result2Name,
+                                                                                                        result3Study));
+                                                                                        flag.set(
+                                                                                                true);
+                                                                                        getRespDecrypt(
+                                                                                                result1Enroll,
+                                                                                                result2Name,
+                                                                                                result3Study);
+
+                                                                                        System.out
+                                                                                                .printf(
+                                                                                                        "Hello"
+                                                                                                            + " %s!%n",
+                                                                                                        getRespDecrypt(
+                                                                                                                result1Enroll,
+                                                                                                                result2Name,
+                                                                                                                result3Study));
+                                                                                    },
+                                                                                    err -> { // deal
+                                                                                        // with
+                                                                                        // op3
+                                                                                        // (getStudyStatusByMRN)error
+                                                                                        System.out
+                                                                                                .printf(
+                                                                                                        "error3");
+                                                                                    }),
+                                                            err -> { // deal with op2 (getName)
+                                                                // error
+                                                                System.out.printf("error2");
+                                                            }),
+                                    err -> { // deal with op2 (getNameByMRN)
+                                        // error
+                                        System.out.printf("error1");
+                                    })
+                            .subscribe()
+                            .with(item -> {});
+
+                    return Uni.createFrom().item(Response.ok(result).build());
+                    */
+
+                    //
+                    //    return Uni.combine()
+                    //            .all()
+                    //            .unis(
+                    //                    uniPatReq,
+                    //                    fcRes.getNameByMRN(env, patreq),
+                    //                    fcRes.GetStudyStatusByMRN(env, patreq))
+                    //            .combinedWith((s1, s2, s3) -> getRespDecrypt(s1, s2, s3));
+
+                    /*
+
+                    if (encryptedText.length() >= 100) {
+                        mrn = decrypt_Vendor(uuid, env, agegroup, encryptedText);
+                        if (StringUtils.isBlank(mrn) || !mrn.contains("|")) {
+                            rstErrorMsg =
+                                    String.format(
+                                            "{\"TransactionID\": \"%s\",\"TransactionTS\":"
+                                                + " \"%s\",\"TransactionEnv\": \"%s\","
+                                                + " \"TransactionJob\": \"%s\",\"TransactionType\":"
+                                                + " \"%s\", \"TransactionStatus\": \"%s\","
+                                                + " \"TransactionContext\": \"%s\"}",
+                                            uuid,
+                                            LocalDateTime.ofInstant(
+                                                    Instant.now(), ZoneId.systemDefault()),
+                                            env,
+                                            "Decrypt/EpicToken/MobileApp/Processing/MRN/NULL",
+                                            "QUERY",
+                                            "Captured/Authorized/Failed",
+                                            encryptedText);
+                            LOGGER.errorf(rstErrorMsg);
+                            message =
+                                    String.format(
+                                            "ERROR:: FATAL :: time: %s ENV: %s  -- Failed or unable"
+                                                + " to fetch the patient's MRN for an Epic token"
+                                                + " (Mobile App):: %s. -- Reason: %s",
+                                            LocalDateTime.ofInstant(
+                                                    Instant.now(), ZoneId.systemDefault()),
+                                            env,
+                                            encryptedText,
+                                            mrn);
+                            respBody.setMsg(message);
+                            mrn = "";
+                        }
+                    } else { // if (encryptedText.length() < 100) from MyChart
+                        mrn = decrypt_Epic(uuid, env, agegroup, encryptedText, decrypt);
+                        if (StringUtils.isBlank(mrn)) {
+                            rstErrorMsg =
+                                    String.format(
+                                            "{\"TransactionID\": \"%s\",\"TransactionTS\":"
+                                                + " \"%s\",\"TransactionEnv\": \"%s\","
+                                                + " \"TransactionJob\": \"%s\",\"TransactionType\":"
+                                                + " \"%s\", \"TransactionStatus\": \"%s\","
+                                                + " \"TransactionContext\": \"%s\"}",
+                                            uuid,
+                                            LocalDateTime.ofInstant(
+                                                    Instant.now(), ZoneId.systemDefault()),
+                                            env,
+                                            "Decrypt/EpicToken/MyChart/Processing/MRN/NULL",
+                                            "QUERY",
+                                            "Captured/Authorized/Failed",
+                                            encryptedText);
+                            LOGGER.errorf(rstErrorMsg);
+                            message =
+                                    String.format(
+                                            "ERROR:: FATAL :: time: %s ENV: %s -- Failed or unable"
+                                                + " to fetch the patient's MRN for an Epic token"
+                                                + " (MyChart Request):: %s",
+                                            LocalDateTime.ofInstant(
+                                                    Instant.now(), ZoneId.systemDefault()),
+                                            env,
+                                            encryptedText);
+                            respBody.setMsg(message);
+                        }
+                    } // if (encryptedText.length() >= 100) {
+                    */
+
+                    // if (StringUtils.isNotBlank(mrn)) {
+                    //    final boolean env_prod =
+                    //            StringUtils.equalsIgnoreCase(env, "prod") ? true : false;
+                    //
+                    //    // final boolean isAssociated = isAssociatedWithStudy(env_prod, mrn,
+                    // uuid);
+                    //
+                    //    // if (isAssociated) {
+                    //    //    collect_type = "clinic";
+                    //    // }
+                    //    modelPatReq patreq = new modelPatReq();
+                    //    patreq.setMrn(mrn);
+                    //    patreq.setDob("1900-01-01");
+                    //    patreq.setAgegroup(agegroup);
+                    //    patreq.setEnv(env);
+                    //    patreq.setUuid(uuid);
+                    //    patreq.setEncrypted(encryptedText);
+                    //    // biApiResp respName = new biApiResp();
+                    //    // getNameByMRN(env_prod, mrn, uuid);
+                    //    // Combine the result of our 2 Unis in a tuple
+                    //    Uni<modelPatReq> uniPatReq = Uni.createFrom().item(patreq);
+                    //    /*
+                    //    Uni.combine()
+                    //            .all()
+                    //            .unis(
+                    //                    initResp,
+                    //                    fcRes.getNameByMRN(env, patreq),
+                    //                    fcRes.GetStudyStatusByMRN(env, patreq))
+                    //            .asTuple()
+                    //            // Subscribe (which will trigger the calls)
+                    //            .subscribe()
+                    //            .with(
+                    //                    tuple -> {
+                    //                        System.out.println(
+                    //                                "Programming Quote: " + tuple.getItem1());
+                    //                        System.out.println(
+                    //                                "Chuck Norris Quote: " + tuple.getItem2());
+                    //                        System.out.println(
+                    //                                "Programming Quote: " + tuple.getItem3());
+                    //                    });
+                    //
+                    //    */
+                    //    return Uni.combine()
+                    //            .all()
+                    //            .unis(
+                    //                    uniPatReq,
+                    //                    fcRes.getNameByMRN(env, patreq),
+                    //                    fcRes.GetStudyStatusByMRN(env, patreq))
+                    //            .combinedWith((s1, s2, s3) -> getRespDecrypt(s1, s2, s3));
+                    //
+                    //    /*
+                    //    Uni.createFrom()
+                    //            .item(fcRes.getNameByMRN(env, patreq).subscribe().with(item ->
+                    // {}))
+                    //            .emitOn(Infrastructure.getDefaultExecutor())
+                    //            .onItem()
+                    //            .transform(
+                    //                    name -> {
+                    //                        if (name == null) {
+                    //                            throw new AssertionError(
+                    //                                    "Name was not populated properly");
+                    //                        }
+                    //                        System.out.println(
+                    //                                "\r\n\r\n\r\n\n\n\n\n\nTransform: " + name);
+                    //                        return name;
+                    //                    })
+                    //            .subscribe()
+                    //            .with(
+                    //                    item -> {
+                    //                        System.out.println("\n\n\n\n\nItem: " + item);
+                    //                    },
+                    //                    Throwable::printStackTrace);
+                    //
+                    //                    */
+                    //    /*
+                    //    return uni.subscribe()
+                    //              .with(
+                    //                    item -> {
+                    //                        }
+                    //                    },
+                    //                    failure -> System.out.println("Failed with " + failure));
+                    //
+                    //    } else {
+                    //    } // if (barName != null) {
+                    //        */
+                    // } // if (StringUtils.isBlank(mrn)) {
+                } catch (IllegalBlockSizeException e) {
+                    rstErrorMsg =
+                            String.format(
+                                    "TransactionID: %s "
+                                            + " | TransactionTS: %s"
+                                            + "| TransactionEnv: %s | TransactionJob: %s |"
+                                            + " TransactionType: %s | TransactionStatus: %s |"
+                                            + " TransactionContext: %s",
+                                    uuid,
+                                    LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
+                                    env,
+                                    "Decrypt/Processing/IllegalBlockSizeException",
+                                    "QUERY",
+                                    "Captured/Authorized/Failed",
+                                    encryptedText);
+                    LOGGER.errorf(e, rstErrorMsg);
+                    // e.printStackTrace(System.out);
+                    // throw new RuntimeException(e.getCause());
+                } catch (BadPaddingException e) {
+                    rstErrorMsg =
+                            String.format(
+                                    "TransactionID: %s | "
+                                            + " | TransactionTS: %s"
+                                            + "TransactionEnv: %s | TransactionJob: %s |"
+                                            + " TransactionType: %s | TransactionStatus: %s |"
+                                            + " TransactionContext: %s",
+                                    uuid,
+                                    LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
+                                    env,
+                                    "Decrypt/Processing/BadPaddingException",
+                                    "QUERY",
+                                    "Captured/Authorized/Failed",
+                                    encryptedText);
+                    LOGGER.errorf(e, rstErrorMsg);
+                    // e.printStackTrace(System.out);
+                    // throw new RuntimeException(e.getCause());
+                } catch (Exception e) {
+                    rstErrorMsg =
+                            String.format(
+                                    "TransactionID: %s "
+                                            + "| TransactionEnv: %s | TransactionJob: %s |"
+                                            + " TransactionType: %s | TransactionStatus: %s |"
+                                            + " TransactionContext: %s",
+                                    uuid,
+                                    LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
+                                    env,
+                                    "Decrypt/Processing/Exception",
+                                    "QUERY",
+                                    "Captured/Authorized/Failed",
+                                    encryptedText);
+                    LOGGER.errorf(e, rstErrorMsg);
+                    // e.printStackTrace(System.out);
+                    // throw new RuntimeException(e.getCause());
+                }
+            } // encryptedText is not null
+        } catch (Exception e) {
+            rstErrorMsg =
+                    String.format(
+                            "{\"TransactionID\": \"%s\","
+                                    + "\"TransactionTS\": \"%s\","
+                                    + "\"TransactionEnv\": \"%s\","
+                                    + " \"TransactionJob\": \"%s\",\"TransactionType\": \"%s\","
+                                    + " \"TransactionStatus\": \"%s\","
+                                    + " \"TransactionContext\": \"%s\"}",
+                            uuid,
+                            LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
+                            env,
+                            "Decrypt/EpicToken/Processing/Exception",
+                            "QUERY",
+                            "Captured/Authorized/Failed",
+                            encryptedText);
+            LOGGER.errorf(e, rstErrorMsg);
+            e.printStackTrace();
+            // throw new RuntimeException(e.getCause());
+        } // decrypt try
+        return Uni.createFrom().item(Response.status(400).entity(respDecrypt).build());
+    } // decrypt
+}

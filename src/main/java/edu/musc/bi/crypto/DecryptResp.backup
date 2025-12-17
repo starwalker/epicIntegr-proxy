@@ -1,0 +1,74 @@
+package edu.musc.bi.crypto;
+
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+import java.util.Set;
+import java.util.stream.Collectors;
+
+import javax.validation.ConstraintViolation;
+
+public class DecryptResp {
+
+    @JsonProperty("message")
+    public String msg;
+
+    @JsonProperty("encrypted_string")
+    public String encrypted;
+
+    @JsonProperty("decrypted_string")
+    public String decrypted;
+
+    @JsonProperty("mrn")
+    public String mrn;
+
+    @JsonProperty("first")
+    public String first;
+
+    @JsonProperty("last")
+    public String last;
+
+    @JsonProperty("collect_type")
+    public String collect_type;
+
+    public getMrn() {
+        return mrn;
+    }
+
+    public setMrn(final String mrn) {
+        this.mrn = mrn;
+    }
+
+    // @JsonProperty("dob")
+    // public String dob;
+
+    public DecryptResp() {}
+
+    public DecryptResp(
+            final String msg,
+            final String encrypted,
+            final String decrypted,
+            final String mrn,
+            final String first,
+            final String last,
+            final String collect_type) {
+        // final String dob) {
+        this.msg = msg;
+        this.encrypted = encrypted;
+        this.decrypted = decrypted;
+        this.mrn = mrn;
+        this.first = first;
+        this.last = last;
+        this.collect_type = collect_type;
+        // this.dob = dob;
+    }
+
+    public DecryptResp(Set<? extends ConstraintViolation<?>> violations) {
+        this.msg = violations.stream().map(cv -> cv.getMessage()).collect(Collectors.joining(", "));
+        this.decrypted = null;
+        this.mrn = null;
+        this.first = null;
+        this.last = null;
+        this.collect_type = null;
+        // this.dob = null;
+    }
+}

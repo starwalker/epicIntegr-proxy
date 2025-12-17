@@ -1,0 +1,52 @@
+package edu.musc.bi.fhir.gateway;
+
+// import io.smallrye.mutiny.Uni;
+import edu.musc.bi.restclient.biApiResp;
+import edu.musc.bi.restclient.enrollStatus;
+import edu.musc.bi.restclient.modelPatDemogr;
+
+import javax.ws.rs.Consumes;
+import javax.ws.rs.GET;
+import javax.ws.rs.POST;
+import javax.ws.rs.Path;
+import javax.ws.rs.Produces;
+import javax.ws.rs.QueryParam;
+import javax.ws.rs.core.MediaType;
+
+@Path("/R4")
+public interface R4Service {
+
+    @GET
+    @Path("/studyread")
+    @Produces(MediaType.APPLICATION_JSON)
+    @Consumes(MediaType.APPLICATION_JSON)
+    // Set<mrnInOurDNASC> getMRN(@QueryParam("env") String env, modelPatDemogr demo);
+    biApiResp StudyRead(
+            @QueryParam("env") String env,
+            @QueryParam("client_netid") String client_netid,
+            @QueryParam("studycode") String studyCode,
+            patReq preq);
+
+    @POST
+    @Path("/inourdnasc/mrn")
+    @Produces(MediaType.APPLICATION_JSON)
+    @Consumes(MediaType.APPLICATION_JSON)
+    // Set<mrnInOurDNASC> getMRN(@QueryParam("env") String env, modelPatDemogr demo);
+    biApiResp getMRN(@QueryParam("env") String env, modelPatDemogr demo);
+
+    @POST
+    @Path("/inourdnasc/pat")
+    void crtPAT(@QueryParam("env") String env, modelPatDemogr demo);
+    // Uni<Set<mrnInOurDNASC>> getMRN(@QueryParam("env") String env, modelPatDemogr demo);
+    // Uni<RestResponse<mrnInOurDNASC>> getMRN(@QueryParam("env") String env, modelPatDemogr demo);
+
+    @POST
+    @Path("/inourdnasc/getphone")
+    biApiResp getPhone(@QueryParam("env") String env, patReq preq);
+    // Uni<Set<mrnInOurDNASC>> getMRN(@QueryParam("env") String env, modelPatDemogr demo);
+    // Uni<RestResponse<mrnInOurDNASC>> getMRN(@QueryParam("env") String env, modelPatDemogr demo);
+
+    @POST
+    @Path("/inourdnasc/getnamebymrn")
+    biApiResp getNameByMRN(@QueryParam("env") String env, patReq preq);
+}

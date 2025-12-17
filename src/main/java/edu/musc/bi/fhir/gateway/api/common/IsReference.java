@@ -1,0 +1,17 @@
+package edu.musc.bi.fhir.gateway.api;
+
+/**
+ * This common set of attributes across DSTU2, STU3, and R4 reference is used for processing that
+ * spans all versions of FHIR.
+ */
+public interface IsReference extends HasDisplay {
+  IsReference display(String display);
+
+  String id();
+
+  IsReference id(String id);
+
+  String reference();
+
+  IsReference reference(String reference);
+}

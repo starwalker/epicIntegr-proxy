@@ -1,0 +1,86 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+
+option java_package = "edu.musc.bi";
+option java_outer_classname = "fhirEpicProto";
+option objc_class_prefix = "EF";
+
+package fhirepic;
+
+import "google/protobuf/timestamp.proto";
+
+// The greeting service definition.
+service biFhirEpicSVC {
+  // Sends a greeting
+  rpc ptLookupPDF417(ptLookupRequest) returns (ptLookupReply) {}
+}
+
+// The request message containing the user's name.
+message ptLookupRequest {
+  bool env_prod = 1;
+  google.protobuf.Timestamp ts_request = 2;
+  string device_name = 3;
+  string ip_addr = 4;
+  string phone = 5;
+  string email = 6;
+  string race = 7;
+  string ethnic = 8;
+  string ssn = 9;
+  string linkageid = 10;
+  string pdf417 = 11;
+  bytes picFace = 12;
+  bytes picFront = 13;
+  bytes picBack = 14;
+  string idc_override = 15;
+  string netid = 16;
+}
+
+// The response message containing the greetings
+message ptLookupReply {
+  bool isDup_MRN = 1;
+  string id_musc_mrn = 2;
+  string id_musc_internalID = 3;
+  string id_musc_fhirid = 4;
+  string id_musc_epi = 5;
+  string id_encryptedID = 6;
+  string id_linkageID = 7;
+  string id_musc_mychartAcct = 8;
+  sint32 myc_MyChartStatus = 9;
+  bool myc_isProxyOnly = 10;
+  sint32 study_EnrollmentStatus = 11;
+  sint32 study_EnrollEventDate = 12;
+  sint32 study_labOrderDate = 13;
+  sint32 bmicClientType = 14;
+  string phone = 15;
+  string email = 16;
+  string name = 17;
+  string name_hl7 = 18;
+  string lastName = 19;
+  string firstname = 20;
+  string middlename = 21;
+  string dob = 22;
+  string sex = 23;
+  string race = 24;
+  string ethnic = 25;
+  string address = 26;
+  string city = 27;
+  string state = 28;
+  string zip = 29;
+  string country = 30;
+  string dln = 31;
+  string return_code = 32;
+  sint32 msg_delivery_type = 33;
+  sint32 msg_delivery_sid = 34;
+  sint32 msg_delivery_status = 35;
+  google.protobuf.Timestamp msg_delivery_ts = 36;
+  string activation_url = 37;
+  string activation_Code = 38;
+  string activation_pre_populated_username = 39;
+  google.protobuf.Timestamp activation_ts_start = 40;
+  google.protobuf.Timestamp activation_ts_end = 41;
+  sint32 activation_duration_seconds = 42;
+  string jwt = 43;
+  string pat_dups = 44;
+  string pdf417_or = 45;
+}

@@ -1,0 +1,99 @@
+package edu.musc.bi.fhir.gateway;
+
+import edu.musc.bi.restclient.biApiResp;
+import edu.musc.bi.restclient.enrollStatus;
+
+import io.quarkus.logging.Log;
+// import io.smallrye.common.annotation.Blocking;
+// import io.smallrye.common.annotation.NonBlocking;
+import io.smallrye.mutiny.Uni;
+
+import org.apache.commons.lang3.StringUtils;
+import org.eclipse.microprofile.config.Config;
+import org.eclipse.microprofile.config.ConfigProvider;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.eclipse.microprofile.faulttolerance.Asynchronous;
+import org.eclipse.microprofile.faulttolerance.CircuitBreaker;
+import org.eclipse.microprofile.faulttolerance.Retry;
+import org.eclipse.microprofile.faulttolerance.Timeout;
+import org.eclipse.microprofile.rest.client.RestClientBuilder;
+
+import java.net.URI;
+// import java.util.concurrent.CompletionStage;
+
+import javax.ws.rs.GET;
+import javax.ws.rs.Path;
+import javax.ws.rs.QueryParam;
+
+// import javax.inject.Inject;
+
+@Path("/r4")
+public class R4Resource {
+    @ConfigProperty(name = "gateway.fhir.test-url")
+    String test;
+
+    @ConfigProperty(name = "gateway.fhir.prod-url")
+    String prod;
+
+    @ConfigProperty(name = "gateway.inourdnasc.studycode")
+    String inourdnascStudyCode;
+
+    private String env;
+
+    private R4Service r4Service;
+
+    private void SetupClient(final String env) {
+        if (StringUtils.isBlank(this.env)) {
+            this.env = env;
+        }
+
+        if (StringUtils.isBlank(inourdnascStudyCode)) {
+            inourdnascStudyCode =
+                ConfigProvider.getConfig().getOptionalValue("gateway.inourdnasc.studycode", String.class).orElse("STUDY220015");
+        }
+    }
+
+    @Asynchronous
+    @CircuitBreaker(requestVolumeThreshold = 10, failureRatio = 0.5, delay = 10000)
+    @Retry(maxRetries = 5)
+    @Timeout(250)
+    @GET
+    @Path("iodnasc/studystatus")
+    public Uni<biApiResp> getInOurDNASCStudyStatus(
+            @QueryParam("env") String env,
+            @QueryParam("uuid") String uuid,
+            @QueryParam("client_netid") String client_netid,
+            @QueryParam("client_deviceid") String client_deviceid,
+            patReq preq) {
+
+        if (r4Service == null) {
+            SetupClient(env);
+        }
+        if (r4Service == null) {
+            Log.errorf(
+                    "TransactionID: %s | netid: %s | ClientDeviceID: %s |"
+                            + " TransactionType: %s | Transaction Status: %s",
+                    uuid,
+                    client_netid,
+                    client_deviceid,
+                    "Build the restclient failed",
+                    "Completion: transaction begin - query");
+            return null;
+        } else {
+            return StudyRead(env, uuid, client_netid, client_deviceid, inourdnascStudyCode, enroll);
+        }
+    }
+
+    private Uni<biApiResp> StudyRead(
+            final String env,
+            final String uuid,
+            final String client_netid,
+            final String client_deviceid,
+            final String studyCode,
+            final patReq preq) {
+        final Uni<biApiResp> rst =
+                Uni.createFrom().item(r4Service.StudyRead(env, client_netid, studyCode, enroll));
+        return rst;
+        // .onFailure().retry().atMost(10);
+    }
+}
